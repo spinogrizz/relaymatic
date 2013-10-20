@@ -21,9 +21,9 @@ volatile uint8_t prevPortValue = 0x00;
 void init_input_ports() {
     //port D is for pin change interrupts
     DDRD = 0x00;
-    prevPortValue = INPUT_PORT;
+    PORTD = 0xFF; //enable pull-up
 
-    PORTC |= (1<<PC0);
+    prevPortValue = INPUT_PORT;
 
     //enable pin change interrupts
     PCMSK2 |= (1<<PCINT16)|(1<<PCINT17)|(1<<PCINT18)|(1<<PCINT19)|(1<<PCINT20); //first half of PORTD
@@ -40,7 +40,7 @@ void _findFallingEdgePin() {
     if ( (newPort & m) == 0 ) {
         //convert bit mask to pin number
         int pinNumber = (m&0x1?0:m&0x2?1:m&0x4?2:m&0x8?3:m&0x10?4:m&0x20?5:m&0x40?6:7);
-        trigger_input(pinNumber);
+        input_trigger(pinNumber);
     }
 
     prevPortValue = newPort;

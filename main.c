@@ -29,10 +29,14 @@ void init_ports() {
     PORTB &= ~(POWER_SWITCHES|POWER_RELAYS);
 }
 
-void trigger_input(uint8_t number) {
+void input_trigger(uint8_t number) {
     uint8_t currentMask = currentOutputStateMask();
     currentMask ^= _BV(number);
     setOutputStateMask(currentMask);
+}
+
+void executeRemoteCommand(char command, uint8_t data) {
+	setOutputStateMask(data);
 }
 
 void delayed_power_sequence() {
@@ -46,7 +50,7 @@ void delayed_power_sequence() {
         PORTB |= POWER_SWITCHES;
         _delay_ms(50);
 
-        PORTB |= POWER_RELAYS;    
+        //PORTB |= POWER_RELAYS;    
         _delay_ms(50);
     }; sei();
 }
@@ -67,13 +71,18 @@ int main() {
     while(1) {
         //everyone has their time on the loop
         process_input();
+    	process_i2c();
         process_output();
         process_interface();
 
         //wait before going to sleep
         _delay_ms(50);
 
-        //go to idle sleep
+        if ( i2c_commandsAvailable() || output_hasNewState() ) {
+        	continue; //skip sleep mode, repeat all processes
+        }
+
+        //nothing to do, go to idle sleep
         set_sleep_mode(SLEEP_MODE_IDLE);
         sleep_enable();
         sleep_cpu();

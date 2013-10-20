@@ -5,14 +5,18 @@
 #include <stdlib.h> 
 #include <stdbool.h> 
 
+#include "i2c.h"
 
-#define RESET_TWI_FLAGS  TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
+#define RESET_TWI_FLAGS()  TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
+
+volatile char last_command = 0x00;
+volatile uint8_t last_data = 0x00;
 
 ISR(TWI_vect){    
-    cli();
+    //cli();
 
     if ( (TWSR & 0xF8) == TW_SR_SLA_ACK ) {  //we have been addressed
-        TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
+       RESET_TWI_FLAGS();
     }
     else if ( (TWSR & 0xF8) == TW_SR_DATA_ACK ) { // data has been received in slave receiver mode
         // if ( TWDR == 0x69 ) {
@@ -26,15 +30,22 @@ ISR(TWI_vect){
 
         //uint8_t newState = TWDR;
 
-//        setRelayStateMask(newState);
+       // PORTC ^= _BV(PC0);
 
-        TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
+        last_command = 'm';
+        last_data = TWDR;
+
+        process_i2c();
+
+       // setRelayStateMask(newState);
+
+        RESET_TWI_FLAGS();
     } else {
         // if none of the above apply prepare TWI to be addressed again
-        TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
+        RESET_TWI_FLAGS();
     }  
 
-    sei();
+    //sei();
 }
 
 void init_i2c(uint8_t address){
@@ -44,4 +55,17 @@ void init_i2c(uint8_t address){
 
     // set the TWCR to enable address matching and enable TWI, clear TWINT, enable TWI interrupt
     TWCR = (1<<TWIE) | (1<<TWEA) | (1<<TWINT) | (1<<TWEN);
+}
+
+bool i2c_commandsAvailable() {
+    return (last_command!=0x00);
+}
+
+void process_i2c() {    
+    if ( i2c_commandsAvailable() ) {
+        executeRemoteCommand(last_command, last_data);
+        last_command = 0x00;
+        last_data = 0x00;
+    }
+
 }

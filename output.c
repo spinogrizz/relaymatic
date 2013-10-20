@@ -38,6 +38,10 @@ void process_output() {
     }
 }
 
+bool output_hasNewState() {
+	return hasNewOutput;
+}
+
 uint8_t currentOutputStateMask() {
     return _currentStateMask;
 }
