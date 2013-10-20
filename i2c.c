@@ -9,27 +9,27 @@
 #define RESET_TWI_FLAGS  TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
 
 ISR(TWI_vect){    
-	cli();
+    cli();
 
-	if ( (TWSR & 0xF8) == TW_SR_SLA_ACK ) {  //we have been addressed
-		TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
-	}
-	else if ( (TWSR & 0xF8) == TW_SR_DATA_ACK ) { // data has been received in slave receiver mode
-    	// if ( TWDR == 0x69 ) {
-    	// 	//PORTC |= DEBUG2;
-    	// 	PORTC ^= DEBUG2;
-    	// }
-    	// else  if ( TWDR == 0x62 ) {
-    	// 	//PORTC |= DEBUG1;
-    	// 	PORTC ^= DEBUG1;
-    	// }	
+    if ( (TWSR & 0xF8) == TW_SR_SLA_ACK ) {  //we have been addressed
+        TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
+    }
+    else if ( (TWSR & 0xF8) == TW_SR_DATA_ACK ) { // data has been received in slave receiver mode
+        // if ( TWDR == 0x69 ) {
+        //     //PORTC |= DEBUG2;
+        //     PORTC ^= DEBUG2;
+        // }
+        // else  if ( TWDR == 0x62 ) {
+        //     //PORTC |= DEBUG1;
+        //     PORTC ^= DEBUG1;
+        // }    
 
-		//uint8_t newState = TWDR;
+        //uint8_t newState = TWDR;
 
-//		setRelayStateMask(newState);
+//        setRelayStateMask(newState);
 
-    	 TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
-	} else {
+        TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN); 
+    } else {
         // if none of the above apply prepare TWI to be addressed again
         TWCR |= (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
     }  
