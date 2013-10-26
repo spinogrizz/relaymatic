@@ -20,7 +20,7 @@ flash:
 	avrdude -c $(PROGRAMMER) -F -p $(FLASHDEVICE) -U flash:w:bin/$(PROGNAME).hex:i 
 
 fuses:	
-	avrdude -c $(PROGRAMMER) -F -p $(FLASHDEVICE) -U lfuse:w:0xe2:m -U hfuse:w:0xdf:m #-U efuse:w:0xf9:m
+	avrdude -c $(PROGRAMMER) -F -p $(FLASHDEVICE) -U lfuse:w:0xe2:m -U hfuse:w:0xdc:m #-U efuse:w:0xf9:m
 
 # 	8MHz, no divider
 # 	-U lfuse:w:0xe2:m -U hfuse:w:0xdf:m -U efuse:w:0xff:m      
