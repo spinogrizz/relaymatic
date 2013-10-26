@@ -5,4 +5,5 @@ void process_i2c();
 bool i2c_commandsAvailable();
 
 //override
-void executeRemoteCommand(char command, uint8_t data);
+void i2c_executeWriteCommand(char command, uint8_t intputData);
+void i2c_executeReadCommand(char command, uint8_t *outputData);
