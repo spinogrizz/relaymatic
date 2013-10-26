@@ -19,6 +19,18 @@
 
 #define REMOTE_COMMAND_LED (1<<PC2)
 
+enum RemoteCommands {
+	//set commands
+	Command_SetPortValue = 's',  //lsb 4 bits — port number, msb 4 bits — 0x1111 = on, 0x0000 = off
+	Command_SetAllPortBits = 'S', //use bit mask to toggle all ports
+	Command_AllSwitchOff = 'f',
+	Command_AllSwitchOn = 'n',
+
+	//get commands
+	Command_GetPortValue = 'g',  //return port by number
+	Command_GetAllPortBits = 'G'  //return ports bit mask
+};
+
 void init_ports() {
     init_input_ports();
     init_output_ports();
@@ -37,10 +49,19 @@ void input_trigger(uint8_t number) {
     uint8_t currentMask = currentOutputStateMask();
     currentMask ^= _BV(number);
     setOutputStateMask(currentMask);
+
+    i2c_setReadResult(currentMask);
 }
 
+//i2c commands
 void i2c_executeWriteCommand(char command, uint8_t data) {
 	setOutputStateMask(data);
+	PORTC |= REMOTE_COMMAND_LED;
+}
+
+void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *outputData) {
+	uint8_t currentMask = currentOutputStateMask();
+	*outputData = currentMask;
 	PORTC |= REMOTE_COMMAND_LED;
 }
 
@@ -74,6 +95,9 @@ int main() {
         //init external i2c interface
         init_i2c(0x2f);
 
+        char readCommands[] = {Command_GetPortValue, Command_GetAllPortBits};
+        setReadCommands(readCommands , 2);
+
     }; sei();
 
     //main loop
@@ -87,7 +111,7 @@ int main() {
         process_interface();
 
         //wait before going to sleep
-        _delay_ms(42);
+        _delay_ms(10);
 
         if ( i2c_commandsAvailable() || output_hasNewState() ) {
         	continue; //skip sleep mode, repeat all processes

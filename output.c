@@ -5,7 +5,7 @@
 #include "output.h"
 
 volatile uint8_t _currentStateMask = 0x00;
-static bool hasNewOutput = true;
+volatile bool hasNewOutput = true;
 
 void init_output_ports() {
     //shift register on SPI lines
@@ -42,6 +42,10 @@ bool output_hasNewState() {
 	return hasNewOutput;
 }
 
-uint8_t currentOutputStateMask() {
-    return _currentStateMask;
+volatile uint8_t __attribute__ ((noinline)) currentOutputStateMask() {
+	return (_currentStateMask&0x0F);
+}
+
+void getCurrentOutputStateMask(volatile uint8_t *value) {
+	*value = _currentStateMask & 0x0F; 
 }
