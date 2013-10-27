@@ -12,5 +12,7 @@ void process_output();
 bool output_hasNewState();
 
 void setOutputStateMask(uint8_t byte);
+void setOutputStateMaskSlowly(uint8_t newMask);
+
 volatile uint8_t currentOutputStateMask();
 

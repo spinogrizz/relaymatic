@@ -5,6 +5,7 @@
 #include <stdbool.h> 
 #include <avr/sleep.h>
 #include <avr/wdt.h>
+#include <avr/eeprom.h> 
 
 #include "input.h"
 #include "output.h"
@@ -14,10 +15,16 @@
 #define POWER_SWITCHES    (1<<PB6)
 #define POWER_RELAYS    (1<<PB7)
 
+#define LONG_TIME_RESET_INTERVAL 	3600  //one hour
+#define EEPROM_SAVE_MIN_TIMEOUT		15    //15 seconds
+
 #define DEBUG1 (1<<PC0)
 #define DEBUG2 (1<<PC1)
 
 #define REMOTE_COMMAND_LED (1<<PC2)
+
+uint8_t storedOutputValues[RELAYS_COUNT] EEMEM = { 0x00 };
+volatile bool outputStateNeedsToBeSaved = false;
 
 enum RemoteCommands {
 	//set commands
@@ -54,6 +61,7 @@ void input_trigger(uint8_t number) {
     uint8_t currentMask = currentOutputStateMask();
     currentMask ^= _BV(number);
     setOutputStateMask(currentMask);
+    outputStateNeedsToBeSaved = true;
 }
 
 //i2c commands
@@ -89,6 +97,8 @@ void i2c_executeWriteCommand(char command, uint8_t data) {
 	}
 
 	setOutputStateMask(mask);
+	outputStateNeedsToBeSaved = true;
+
 	PORTC |= REMOTE_COMMAND_LED;
 }
 
@@ -128,6 +138,64 @@ void delayed_power_sequence() {
     }; sei();
 }
 
+void eeprom_restore_stored_values() {
+	uint8_t outputValues[8] = { 0 };
+	uint8_t newMask = 0x00;
+	eeprom_read_block((uint8_t *)outputValues, (const uint8_t *)storedOutputValues, 8);
+
+	for ( int i=0; i<8; i++ ) {
+		newMask |= outputValues[i] ? _BV(i) : 0;
+	}
+
+	setOutputStateMaskSlowly(newMask);
+}
+
+void eeprom_store_new_values() {
+	uint8_t outputValues[8] = { 0 };
+	uint8_t currentMask = currentOutputStateMask();
+
+	for ( int i=0; i<8; i++ ) {
+		outputValues[i] = ((currentMask & _BV(i)) != 0) ? 0xFF : 0x00;
+	}
+
+	eeprom_write_block((const uint8_t *)outputValues, (uint8_t *)storedOutputValues, 8);
+
+	PORTC |= _BV(PC0);
+}
+
+void init_timer() {
+	TCCR0A = 0x00; //normal mode
+	TCCR0B = _BV(CS02) | _BV(CS00); //1024 prescaler
+    TIMSK0 = _BV(TOIE0); //overflow interrupt enabled
+    TIFR0 &= ~_BV(TOV0); //reset flag
+} 
+
+volatile bool needsLongTimeReset = false;
+volatile bool needsEepromSave = false;
+
+void each_second() {
+	static uint16_t longTimeResetCnt = 0x00;
+	static uint8_t eepromWriteTimeout = 0x00;	
+
+	if ( ++longTimeResetCnt == LONG_TIME_RESET_INTERVAL ) {
+		needsLongTimeReset = true;
+		longTimeResetCnt = 0;
+	}
+
+	if ( ++eepromWriteTimeout == EEPROM_SAVE_MIN_TIMEOUT ) { 
+		needsEepromSave = outputStateNeedsToBeSaved;
+		eepromWriteTimeout = 0;
+	}
+}
+
+ISR(TIMER0_OVF_vect) {
+	static uint8_t cnt = 0x00;
+	if ( ++cnt == (F_CPU/1024/256) ) { //each second
+		each_second();
+		cnt = 0;
+	}	
+}
+
 int main() {
 	MCUSR &= ~(1<<WDRF); //clear watchdog reset flag
 	wdt_disable(); //disable watchdog
@@ -136,8 +204,14 @@ int main() {
         //init PORTs, DDRs and PINs
         init_ports();
 
+        //init periodic timer
+        init_timer();
+
         //slowly turn power to relays and switches
         delayed_power_sequence();
+
+		//reload stored values from eeprom
+		eeprom_restore_stored_values();
 
         //init external i2c interface
         init_i2c(0x2f);
@@ -162,6 +236,24 @@ int main() {
 
         if ( i2c_commandsAvailable() || output_hasNewState() ) {
         	continue; //skip sleep mode, repeat all processes
+        }
+
+        if ( needsEepromSave ) {
+        	eeprom_store_new_values();
+        	needsEepromSave = false;
+        }
+
+        if ( needsLongTimeReset ) {
+        	cli();
+
+        	PORTB &= ~POWER_SWITCHES;
+        	_delay_ms(600);
+        	PORTB |= POWER_SWITCHES;
+        	_delay_ms(100);
+
+        	needsLongTimeReset = false;
+
+        	sei();
         }
 
         PORTC &= ~(REMOTE_COMMAND_LED|DEBUG1|DEBUG2);

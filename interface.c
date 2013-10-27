@@ -9,8 +9,6 @@
 #include "input.h"
 #include "output.h"
 
-#define RELAYS_COUNT    8
-
 static bool testButtonPressed = false;
 
 ISR(PCINT0_vect) { 
@@ -35,21 +33,9 @@ void testModeSequence() {
     uint8_t currentMask = currentOutputStateMask();
 
     if ( currentMask == 0x00 ) { //everything is off, switch on from first to last
-        for ( int i=0; i<RELAYS_COUNT; i++ ) {        
-            currentMask |= _BV(i);;
-            setOutputStateMask(currentMask);
-            process_output();
-            _delay_ms(50);
-        } 
+        setOutputStateMaskSlowly(0xFF);
     } else { //switch off in sequence
-        for ( int i=RELAYS_COUNT; i>=0; i-- ) {        
-            if ( currentMask & _BV(i) ) {
-                currentMask &= ~_BV(i); //reuse old value
-                setOutputStateMask(currentMask);
-                process_output();
-                _delay_ms(50);
-            }
-        }             
+        setOutputStateMaskSlowly(0x00);
     }
 
     sei(); //enable interrupts again

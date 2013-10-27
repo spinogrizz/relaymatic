@@ -1,4 +1,6 @@
 #include <avr/io.h>
+#include <avr/wdt.h>
+#include <util/delay.h>
 #include <stdlib.h> 
 #include <stdbool.h>
 
@@ -20,6 +22,22 @@ void init_output_ports() {
 void setOutputStateMask(uint8_t mask) {
     _currentStateMask = mask;
     hasNewOutput = true;
+}
+
+void setOutputStateMaskSlowly(uint8_t newMask) {
+	for ( int i=0; i<8; i++ ) {
+		if (   (_BV(i) & _currentStateMask) 
+			!= (_BV(i) & newMask) )
+		{	
+			_currentStateMask ^= _BV(i);
+			hasNewOutput = true;
+
+		    process_output(); //push to 595 register
+		    
+		    _delay_ms(42);
+		    wdt_reset(); //feed the dog after delay
+		}
+	}
 }
 
 void process_output() {
