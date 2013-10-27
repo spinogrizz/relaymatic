@@ -14,7 +14,7 @@ volatile char allReadCommands[MAX_READ_COMMANDS];
 
 typedef struct { 
    char command;
-   uint8_t data; 
+   uint8_t data;    
 } RemoteCommand; 
 
 volatile RemoteCommand commandQueue[WRITE_COMMANDS_QUEUE_SIZE];
@@ -22,7 +22,7 @@ volatile RemoteCommand commandQueue[WRITE_COMMANDS_QUEUE_SIZE];
 volatile uint8_t qHead = 0; 
 volatile uint8_t qTail = 0;
 
-volatile uint8_t readRes = 0x00;
+volatile uint8_t readResultByte = 0x00;
 
 #define N_ELEMS(x) (sizeof(x)/sizeof((x)[0]))
 
@@ -37,6 +37,10 @@ static inline uint8_t i2c_commandQueueFull() {
 static inline void i2c_commandEnqueue(RemoteCommand *command) { 
    commandQueue[qTail] = *command; 
    qTail = (qTail + 1) % N_ELEMS(commandQueue); 
+}
+
+static inline void i2c_lastCommand(RemoteCommand *command) { 
+    *command = commandQueue[qHead]; 
 }
 
 static inline void i2c_commandDequeue(RemoteCommand *command) { 
@@ -61,10 +65,8 @@ enum {
 
     //slave receiver
     BusWillReceiveCommand = 0x01,
-    BusReceivedWriteCommand = 0x02,
-    BusReceivedWriteDataByte = 0x03,
-    BusReceivedReadCommand = 0x14,
-    BusReceivedReadArgumentByte = 0x15,
+    BusReceivedCommand = 0x02,
+    BusReceivedArgumentByte = 0x03,
 
     //slave transmitter
     BusRequestedReadCommand = 0x21,
@@ -75,9 +77,9 @@ enum {
 ISR(TWI_vect){    
     cli();
 
-    static volatile char bus_state = BusIdle;
-    static RemoteCommand currentWriteCmd = {0x00, 0x00}; 
-    static RemoteCommand lastReadCmd = {0x00, 0x00}; 
+    static char bus_state = BusIdle;
+    static RemoteCommand currentCommand = {0x00, 0x00}; 
+    //static RemoteCommand lastReadCmd = {0x00, 0x00}; 
 
     //useful macros for setting TWI bits and checking status
     uint8_t status = (TWSR & 0xF8);
@@ -102,31 +104,16 @@ ISR(TWI_vect){
 
     case TW_SR_DATA_ACK:  // data has been received in slave receiver mode
         if ( bus_state == BusWillReceiveCommand ) {
-            char cmd = TWDR;
+            currentCommand.command = TWDR;
+            currentCommand.data = 0x00;
+            bus_state = BusReceivedCommand;                
 
-            if ( i2c_isReadCommand(cmd) ) {
-                lastReadCmd.command = cmd;
-                lastReadCmd.data = 0x00;
-                bus_state = BusReceivedReadCommand;
-                PORTC |= (1<<PC0);  
-            }
-            else {
-                currentWriteCmd.command = TWDR;
-                currentWriteCmd.data = 0x00;
-                bus_state = BusReceivedWriteCommand;                
-            }
-            ACK();
-        } else if ( bus_state == BusReceivedReadCommand) {
-            lastReadCmd.data = TWDR;
-            bus_state = BusReceivedReadArgumentByte;
-            ACK();            
-        } else if ( bus_state == BusReceivedWriteCommand) {
-            currentWriteCmd.data = TWDR;
-
-            i2c_commandEnqueue(&currentWriteCmd);
-            currentWriteCmd = (RemoteCommand){0, 0};
-    
-            bus_state = BusReceivedWriteDataByte;
+            ACK();      
+        } else if ( bus_state == BusReceivedCommand) {
+            currentCommand.data = TWDR;
+            i2c_commandEnqueue(&currentCommand);
+            currentCommand = (RemoteCommand){0, 0};
+            bus_state = BusReceivedArgumentByte;
             ACK();            
         } else {
             NACK();
@@ -134,39 +121,45 @@ ISR(TWI_vect){
 
         break;
 
-
-    case TW_SR_STOP:
+    case TW_SR_DATA_NACK:       // data received, returned nack
+    case TW_SR_GCALL_DATA_NACK:
+        NACK(); // nack back at master
         break;
 
-    case TW_ST_SLA_ACK:
+    case TW_SR_STOP:
+        ACK();
+        bus_state = BusIdle;
+        break;
+
+
+    // SLAVE TRANSMITTER //
+    case TW_ST_SLA_ACK:    //we have been addressed with SLA+R
     case TW_ST_ARB_LOST_SLA_ACK:
         bus_state = BusRequestedReadCommand;
 
-        uint8_t readResponse = 0x00;
-        i2c_executeReadCommand(lastReadCmd.command, lastReadCmd.data, &readResponse);
+        TWDR = readResultByte;
+        readResultByte = 0x00;
 
-        TWDR = readResponse;
         NACK(); //this is only byte
-
         break;
 
     case TW_ST_LAST_DATA:
     case TW_ST_DATA_ACK:
+    case TW_ST_DATA_NACK:
         bus_state = BusTransmittedRequestedValue;
-        lastReadCmd = (RemoteCommand) {0x00, 0x00};
-        ACK(); //send only one byte
+        NACK(); 
         break;
 
     default:
         bus_state = BusIdle;
-        currentWriteCmd = (RemoteCommand) {0x00, 0x00};
+        currentCommand = (RemoteCommand) {0x00, 0x00};
         ACK();
         break;
     }  
 
     TWCR |= twi_ctrl; //set all bit at once
 
-    sei();
+   sei();
 }
 
 void init_i2c(uint8_t address){
@@ -177,7 +170,6 @@ void init_i2c(uint8_t address){
     // set the TWCR to enable address matching and enable TWI, clear TWINT, enable TWI interrupt
     TWCR = (1<<TWIE) | (1<<TWEA) | (1<<TWINT) | (1<<TWEN);
 }
-
 
 bool i2c_commandsAvailable() {
     return !i2c_commandQueueEmpty();
@@ -193,15 +185,17 @@ void setReadCommands(char commands[], uint8_t numCommands) {
     }
 }
 
-void i2c_setReadResult(volatile uint8_t result) {
-    readRes = result;
-}
-
 void process_i2c() {    
     if ( i2c_commandsAvailable() ) {
         RemoteCommand cmd;
         i2c_commandDequeue(&cmd);
-        i2c_executeWriteCommand(cmd.command, cmd.data);
-    }
 
+        if ( i2c_isReadCommand(cmd.command) ) {
+            uint8_t result = 0x00;
+            i2c_executeReadCommand(cmd.command, cmd.data, &result);
+            readResultByte = result;
+        } else {
+            i2c_executeWriteCommand(cmd.command, cmd.data);
+        }
+    }
 }

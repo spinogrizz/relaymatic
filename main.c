@@ -50,7 +50,7 @@ void input_trigger(uint8_t number) {
     currentMask ^= _BV(number);
     setOutputStateMask(currentMask);
 
-    i2c_setReadResult(currentMask);
+    PORTC |= (1<<PC0);  
 }
 
 //i2c commands
@@ -62,7 +62,6 @@ void i2c_executeWriteCommand(char command, uint8_t data) {
 void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *outputData) {
 	uint8_t currentMask = currentOutputStateMask();
 	*outputData = currentMask;
-	PORTC |= REMOTE_COMMAND_LED;
 }
 
 void delayed_power_sequence() {
