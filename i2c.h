@@ -5,7 +5,7 @@ void process_i2c();
 
 bool i2c_commandsAvailable();
 
-void setReadCommands(char commands[], uint8_t numCommands);
+void i2c_setReadCommands(char commands[], uint8_t numCommands);
 
 //override
 void i2c_executeWriteCommand(char command, uint8_t intputData);

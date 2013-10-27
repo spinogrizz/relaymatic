@@ -43,9 +43,5 @@ bool output_hasNewState() {
 }
 
 volatile uint8_t __attribute__ ((noinline)) currentOutputStateMask() {
-	return (_currentStateMask&0x0F);
-}
-
-void getCurrentOutputStateMask(volatile uint8_t *value) {
-	*value = _currentStateMask & 0x0F; 
+	return (_currentStateMask&0xFF);
 }

@@ -9,7 +9,7 @@
 #include "input.h"
 #include "output.h"
 
-#define RELAYS_COUNT    4
+#define RELAYS_COUNT    8
 
 static bool testButtonPressed = false;
 
@@ -39,7 +39,7 @@ void testModeSequence() {
             currentMask |= _BV(i);;
             setOutputStateMask(currentMask);
             process_output();
-            _delay_ms(250);
+            _delay_ms(50);
         } 
     } else { //switch off in sequence
         for ( int i=RELAYS_COUNT; i>=0; i-- ) {        
@@ -47,7 +47,7 @@ void testModeSequence() {
                 currentMask &= ~_BV(i); //reuse old value
                 setOutputStateMask(currentMask);
                 process_output();
-                _delay_ms(250);
+                _delay_ms(50);
             }
         }             
     }

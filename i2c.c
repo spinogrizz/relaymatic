@@ -175,7 +175,7 @@ bool i2c_commandsAvailable() {
     return !i2c_commandQueueEmpty();
 }
 
-void setReadCommands(char commands[], uint8_t numCommands) {
+void i2c_setReadCommands(char commands[], uint8_t numCommands) {
     for ( int i=0; i<MAX_READ_COMMANDS; i++ ) {
         if ( i<numCommands ) {
             allReadCommands[i] = commands[i];

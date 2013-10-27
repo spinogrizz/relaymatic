@@ -23,6 +23,7 @@ enum RemoteCommands {
 	//set commands
 	Command_SetPortValue = 's',  //lsb 4 bits — port number, msb 4 bits — 0x1111 = on, 0x0000 = off
 	Command_SetAllPortBits = 'S', //use bit mask to toggle all ports
+	Command_TogglePortValue = 't', 
 	Command_AllSwitchOff = 'f',
 	Command_AllSwitchOn = 'n',
 
@@ -32,6 +33,10 @@ enum RemoteCommands {
 };
 
 void init_ports() {
+	//default values
+    PCMSK0 = 0x00; PCMSK1 = 0x00; PCMSK2 = 0x00;
+    PCICR = 0x00;
+
     init_input_ports();
     init_output_ports();
     init_interface_ports();
@@ -49,19 +54,62 @@ void input_trigger(uint8_t number) {
     uint8_t currentMask = currentOutputStateMask();
     currentMask ^= _BV(number);
     setOutputStateMask(currentMask);
-
-    PORTC |= (1<<PC0);  
 }
 
 //i2c commands
 void i2c_executeWriteCommand(char command, uint8_t data) {
-	setOutputStateMask(data);
+	uint8_t mask = currentOutputStateMask();
+
+	switch (command) {
+		case Command_SetPortValue: {
+			uint8_t port = (data & 0x0F);
+			uint8_t value = ((data & 0xF0)>>4);
+
+			if ( value != 0x00 ) {
+    			mask |= _BV(port-1);
+			} else {
+				mask &= ~_BV(port-1);
+			}
+			break;
+		}
+		case Command_TogglePortValue:
+			mask ^= (1<<(data-1));
+			break;
+		case Command_SetAllPortBits:
+			mask = data;
+			break;
+		case Command_AllSwitchOn:
+			mask = 0xFF;
+			break;
+		case Command_AllSwitchOff:
+			mask = 0x00;
+			break;
+		default:
+			break;
+	}
+
+	setOutputStateMask(mask);
 	PORTC |= REMOTE_COMMAND_LED;
 }
 
 void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *outputData) {
-	uint8_t currentMask = currentOutputStateMask();
-	*outputData = currentMask;
+	uint8_t mask = currentOutputStateMask();
+
+	switch (command) {
+		case Command_GetPortValue:
+			if ( (mask & _BV(argument)) != 0 ) {
+				*outputData = 0xFF;
+			} else {
+				*outputData = 0x00;
+			}
+			break;
+		case Command_GetAllPortBits:
+			*outputData = mask;
+			break;
+		default: 
+			*outputData = 0x00;
+			break;
+	}
 }
 
 void delayed_power_sequence() {
@@ -75,7 +123,7 @@ void delayed_power_sequence() {
         PORTB |= POWER_SWITCHES;
         _delay_ms(50);
 
-        //PORTB |= POWER_RELAYS;    
+        PORTB |= POWER_RELAYS;    
         _delay_ms(50);
     }; sei();
 }
@@ -94,9 +142,9 @@ int main() {
         //init external i2c interface
         init_i2c(0x2f);
 
+        //declare i2c read commands
         char readCommands[] = {Command_GetPortValue, Command_GetAllPortBits};
-        setReadCommands(readCommands , 2);
-
+        i2c_setReadCommands(readCommands , 2);
     }; sei();
 
     //main loop
