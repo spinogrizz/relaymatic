@@ -164,36 +164,35 @@ void eeprom_store_new_values() {
 }
 
 void init_timer() {
-	TCCR0A = 0x00; //normal mode
-	TCCR0B = _BV(CS02) | _BV(CS00); //1024 prescaler
-    TIMSK0 = _BV(TOIE0); //overflow interrupt enabled
-    TIFR0 &= ~_BV(TOV0); //reset flag
+	TCCR1A = 0x00;
+	TCCR1B = _BV(WGM12) | _BV(CS10) | _BV(CS12); //1024 prescaler, CTC mode
+
+	OCR1A = 5*F_CPU/1024; //each 5 seconds
+
+    TIMSK1 = _BV(OCIE1A); //overflow interrupt enabled
+    TIFR1 &= ~_BV(OCF1A); //reset flag
 } 
 
 volatile bool needsLongTimeReset = false;
 volatile bool needsEepromSave = false;
 
-void each_second() {
+void each_5_seconds() { 
 	static uint16_t longTimeResetCnt = 0x00;
 	static uint8_t eepromWriteTimeout = 0x00;	
 
-	if ( ++longTimeResetCnt == LONG_TIME_RESET_INTERVAL ) {
+	if ( ++longTimeResetCnt == LONG_TIME_RESET_INTERVAL/5 ) {
 		needsLongTimeReset = true;
 		longTimeResetCnt = 0;
 	}
 
-	if ( ++eepromWriteTimeout == EEPROM_SAVE_MIN_TIMEOUT ) { 
+	if ( ++eepromWriteTimeout == EEPROM_SAVE_MIN_TIMEOUT/5 ) { 
 		needsEepromSave = outputStateNeedsToBeSaved;
 		eepromWriteTimeout = 0;
 	}
 }
 
-ISR(TIMER0_OVF_vect) {
-	static uint8_t cnt = 0x00;
-	if ( ++cnt == (F_CPU/1024/256) ) { //each second
-		each_second();
-		cnt = 0;
-	}	
+ISR(TIMER1_COMPA_vect) {
+	each_5_seconds();
 }
 
 int main() {
