@@ -17,9 +17,14 @@
 
 #define LONG_TIME_RESET_INTERVAL    3600  //one hour
 #define EEPROM_SAVE_MIN_TIMEOUT     15    //15 seconds
+#define RELEASE_INTERRUPT_TIMEOUT   10    //10 seconds
 
-#define DEBUG1 (1<<PC0)
-#define DEBUG2 (1<<PC1)
+#define DEBUG_MODE 1
+
+#if DEBUG_MODE
+    #define DEBUG1 (1<<PD6)
+    #define DEBUG2 (1<<PD7)
+#endif
 
 #define REMOTE_COMMAND_LED (1<<PC2)
 
@@ -48,13 +53,24 @@ void init_ports() {
     init_output_ports();
     init_interface_ports();
 
+#if DEBUG_MODE
     //debug leds
-    DDRC |= (DEBUG1|DEBUG2|REMOTE_COMMAND_LED);
-    PORTC &= ~(DEBUG1|DEBUG2|REMOTE_COMMAND_LED);
+    DDRD |= (DEBUG1|DEBUG2);
+    PORTD &= ~(DEBUG1|DEBUG2);
+#endif
 
     //external 12v switch power control, and 5v for relays
     DDRB |= (POWER_SWITCHES|POWER_RELAYS);
     PORTB &= ~(POWER_SWITCHES|POWER_RELAYS);
+
+    //blue led indicator
+    DDRC |= (REMOTE_COMMAND_LED);
+    PORTC &= ~(REMOTE_COMMAND_LED);
+
+    //interrupt and address buffer lines
+    DDRC |= (INTERRUPT_LINE|ADDRESS_LINE_OUT);    
+    DDRC &= ~(ADDRESS_LINE_IN);
+    PORTC &= ~(INTERRUPT_LINE|ADDRESS_LINE_IN|ADDRESS_LINE_OUT);
 }
 
 void input_trigger(uint8_t number) {
@@ -62,6 +78,8 @@ void input_trigger(uint8_t number) {
     currentMask ^= _BV(number);
     setOutputStateMask(currentMask);
     outputStateNeedsToBeSaved = true;
+
+    controlInterruptLine(true); //trigger interrupt line
 }
 
 //i2c commands
@@ -120,6 +138,9 @@ void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *ou
             *outputData = 0x00;
             break;
     }
+
+    //master asked about our state, release the interrupt line
+    controlInterruptLine(false);    
 }
 
 void delayed_power_sequence() {
@@ -159,11 +180,9 @@ void eeprom_store_new_values() {
     }
 
     eeprom_write_block((const uint8_t *)outputValues, (uint8_t *)storedOutputValues, 8);
-
-    PORTC |= _BV(PC0);
 }
 
-void init_timer() {
+void init_timeout_timer() {
     TCCR1A = 0x00;
     TCCR1B = _BV(WGM12) | _BV(CS10) | _BV(CS12); //1024 prescaler, CTC mode
 
@@ -204,7 +223,7 @@ int main() {
         init_ports();
 
         //init periodic timer
-        init_timer();
+        init_timeout_timer();
 
         //slowly turn power to relays and switches
         delayed_power_sequence();
@@ -231,7 +250,7 @@ int main() {
         process_interface();
 
         //wait before going to sleep
-        _delay_ms(10);
+        _delay_ms(15);
 
         if ( i2c_commandsAvailable() || output_hasNewState() ) {
             continue; //skip sleep mode, repeat all processes
@@ -253,7 +272,15 @@ int main() {
             }; sei();
         }
 
-        PORTC &= ~(REMOTE_COMMAND_LED|DEBUG1|DEBUG2);
+        //turn off blue led
+        PORTC &= ~(REMOTE_COMMAND_LED);
+
+        //release interrupt line
+        //controlInterruptLine(false);
+
+#if DEBUG_MODE
+        PORTD &= ~(DEBUG1|DEBUG2);
+#endif
 
         wdt_disable();
 

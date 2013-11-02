@@ -6,34 +6,9 @@
 
 #include "input.h"
 
-void _findFallingEdgePin();
-
-ISR(PCINT1_vect) { 
-    _findFallingEdgePin();
-}
+static volatile uint8_t prevPortValue = 0x00;
 
 ISR(PCINT2_vect) { 
-    _findFallingEdgePin();
-}
-
-volatile uint8_t prevPortValue = 0x00;
-
-void init_input_ports() {
-    //port D is for pin change interrupts
-    DDRD = 0x00;
-    PORTD = 0xFF; //enable pull-up
-
-    prevPortValue = INPUT_PORT;
-
-    //enable pin change interrupts
-    PCMSK2 |= (1<<PCINT16)|(1<<PCINT17)|(1<<PCINT18)|(1<<PCINT19)|(1<<PCINT20); //first half of PORTD
-    PCMSK1 |= (1<<PCINT21)|(1<<PCINT22)|(1<<PCINT23); //second half of PORTD
-  
-    PCICR |= (1<<PCIE1)|(1<<PCIE2); //pin change interrupts are enabled
-}
-
-
-void _findFallingEdgePin() {
     uint8_t newPort = INPUT_PORT;
     uint8_t m = prevPortValue ^ newPort;
 
@@ -44,6 +19,18 @@ void _findFallingEdgePin() {
     }
 
     prevPortValue = newPort;
+}
+
+void init_input_ports() {
+    //port D is for pin change interrupts
+    DDRD = 0x00;
+    PORTD = 0xFF; //enable pull-up
+
+    prevPortValue = INPUT_PORT;
+
+    //enable pin change interrupts
+    PCMSK2 = 0xFF; //port D is 8-bit input, all pins PCINT16-23 are captured
+    PCICR |= (1<<PCIE2); //pin change interrupts are enabled
 }
 
 void process_input() {
