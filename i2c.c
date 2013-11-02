@@ -198,11 +198,11 @@ void process_i2c() {
         RemoteCommand cmd;
         i2c_commandDequeue(&cmd);
 
-        if ( i2c_isReadCommand(cmd.command) ) {
+        if ( i2c_isReadCommand(cmd.command) && i2c_executeReadCommand != 0 ) {
             uint8_t result = 0x00;
             i2c_executeReadCommand(cmd.command, cmd.data, &result);
             readResultByte = result;
-        } else {
+        } else if ( i2c_executeWriteCommand != 0 ) {
             i2c_executeWriteCommand(cmd.command, cmd.data);
         }
     }

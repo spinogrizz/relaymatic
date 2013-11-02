@@ -6,6 +6,8 @@
 
 #include "input.h"
 
+#define INPUT_PORT   	PIND
+
 static volatile uint8_t prevPortValue = 0x00;
 
 ISR(PCINT2_vect) { 
@@ -15,7 +17,9 @@ ISR(PCINT2_vect) {
     if ( (newPort & m) == 0 && m != 0 ) {
         //convert bit mask to pin number
         int pinNumber = (m&0x1?0:m&0x2?1:m&0x4?2:m&0x8?3:m&0x10?4:m&0x20?5:m&0x40?6:7);
-        input_trigger(pinNumber);
+        if ( input_trigger ) {
+        	input_trigger(pinNumber);
+        }
     }
 
     prevPortValue = newPort;

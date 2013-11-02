@@ -17,11 +17,10 @@
 #define POWER_SWITCHES    (1<<PB6)
 #define POWER_RELAYS    (1<<PB7)
 
-#define LONG_TIME_RESET_INTERVAL    3600  //one hour
-#define EEPROM_SAVE_MIN_TIMEOUT     15    //15 seconds
-#define RELEASE_INTERRUPT_TIMEOUT   10    //10 seconds
+#define LONG_TIME_RESET_INTERVAL    3600  //reset switches every hours
+#define EEPROM_SAVE_MIN_TIMEOUT     15    //schedule EEPROM save only once in 15 seconds
 
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 
 #if DEBUG_MODE
     #define DEBUG1 (1<<PD6)
@@ -30,7 +29,7 @@
 
 #define REMOTE_COMMAND_LED (1<<PC2)
 
-uint8_t storedOutputValues[RELAYS_COUNT] EEMEM = { 0x00 };
+uint8_t storedOutputValues[8] EEMEM = { 0x00 };
 volatile bool outputStateNeedsToBeSaved = false;
 
 enum RemoteCommands {
@@ -71,24 +70,26 @@ void init_ports() {
 
     //interrupt line
     DDRC |= (INTERRUPT_LINE);    
-    PORTC &= ~(INTERRUPT_LINE);
+    PORTC &= ~(INTERRUPT_LINE); 
 }
 
 void input_trigger(uint8_t number) {
     uint8_t currentMask = currentOutputStateMask();
-    currentMask ^= _BV(number);
+    currentMask ^= _BV(number); //toggle by default
     setOutputStateMask(currentMask);
-    outputStateNeedsToBeSaved = true;
+    outputStateNeedsToBeSaved = true; //schedule eeprom save
 
-    iface_controlInterruptLine(true); //trigger interrupt line
+    iface_controlInterruptLine(true); //trigger interrupt line to report to the master
 }
 
-//i2c commands
+//i2c write commands
 void i2c_executeWriteCommand(char command, uint8_t data) {
     uint8_t mask = currentOutputStateMask();
 
     switch (command) {
         case Command_SetPortValue: {
+            //lsb 4 bits — port number
+            //msb 4 bits — 0x1111 = on, 0x0000 = off
             uint8_t port = (data & 0x0F);
             uint8_t value = ((data & 0xF0)>>4);
 
@@ -100,7 +101,7 @@ void i2c_executeWriteCommand(char command, uint8_t data) {
             break;
         }
         case Command_TogglePortValue:
-            mask ^= (1<<(data-1));
+            mask ^= (1<<(data-1)); //toggle on bit
             break;
         case Command_SetAllPortBits:
             mask = data;
@@ -118,9 +119,10 @@ void i2c_executeWriteCommand(char command, uint8_t data) {
     setOutputStateMask(mask);
     outputStateNeedsToBeSaved = true;
 
-    PORTC |= REMOTE_COMMAND_LED;
+    PORTC |= REMOTE_COMMAND_LED; //blink blue led
 }
 
+//i2c read commands
 void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *outputData) {
     uint8_t mask = currentOutputStateMask();
 
@@ -140,23 +142,20 @@ void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *ou
             break;
     }
 
-    //master asked about our state, release the interrupt line
+    //master received our new state, release the interrupt line
     iface_controlInterruptLine(false);    
 }
 
 void iface_receivedAddressNumber(uint8_t address) {
+    //lsb 3 bits — device number
+    //next 4 bits — device class
     uint8_t classPart = (DEVICE_CLASS&0xF) << 3;
     uint8_t addressPart = address & 0x7;
 
-    if ( address == 2 ) {
-        PORTD |= DEBUG1;
-        _delay_ms(5);
-        PORTD &= ~DEBUG1;
-    }
-
-    init_i2c(classPart | addressPart);
+    init_i2c(classPart | addressPart); //restart i2c with a new address
 }
 
+//slowly turn power to switches and relays
 void delayed_power_sequence() {
     cli(); {
         _delay_ms(10);
@@ -173,6 +172,7 @@ void delayed_power_sequence() {
     }; sei();
 }
 
+//the values in EEPROM are spread in 8 bytes, probably for a better data retention
 void eeprom_restore_stored_values() {
     uint8_t outputValues[8] = { 0 };
     uint8_t newMask = 0x00;
@@ -196,6 +196,7 @@ void eeprom_store_new_values() {
     eeprom_write_block((const uint8_t *)outputValues, (uint8_t *)storedOutputValues, 8);
 }
 
+//use slow 16-bit timer to measure 5 seconds intervals and trigger several timeouts
 void init_timeout_timer() {
     TCCR1A = 0x00;
     TCCR1B = _BV(WGM12) | _BV(CS10) | _BV(CS12); //1024 prescaler, CTC mode
@@ -206,6 +207,7 @@ void init_timeout_timer() {
     TIFR1 &= ~_BV(OCF1A); //reset flag
 } 
 
+//these flags indicates if whether there are new actions to be done
 volatile bool needsLongTimeReset = false;
 volatile bool needsEepromSave = false;
 
@@ -267,6 +269,7 @@ int main() {
             continue; //skip sleep mode, repeat all processes
         }
 
+        //do we have a new values state?
         if ( needsEepromSave ) {
             eeprom_store_new_values();
             needsEepromSave = false;
@@ -290,6 +293,7 @@ int main() {
         PORTD &= ~(DEBUG1|DEBUG2);
 #endif
 
+        //do not let watchdog reset us during sleep
         wdt_disable();
 
         //nothing to do, go to idle sleep
@@ -297,7 +301,7 @@ int main() {
         sleep_enable();
         sleep_cpu();
 
-        wdt_enable(WDTO_2S);        
+        wdt_enable(WDTO_2S); //restore watchdog timer
     }
 
     return 0;  
