@@ -12,6 +12,8 @@
 #include "i2c.h"
 #include "interface.h"
 
+#define DEVICE_CLASS  0x0E
+
 #define POWER_SWITCHES    (1<<PB6)
 #define POWER_RELAYS    (1<<PB7)
 
@@ -67,10 +69,9 @@ void init_ports() {
     DDRC |= (REMOTE_COMMAND_LED);
     PORTC &= ~(REMOTE_COMMAND_LED);
 
-    //interrupt and address buffer lines
-    DDRC |= (INTERRUPT_LINE|ADDRESS_LINE_OUT);    
-    DDRC &= ~(ADDRESS_LINE_IN);
-    PORTC &= ~(INTERRUPT_LINE|ADDRESS_LINE_IN|ADDRESS_LINE_OUT);
+    //interrupt line
+    DDRC |= (INTERRUPT_LINE);    
+    PORTC &= ~(INTERRUPT_LINE);
 }
 
 void input_trigger(uint8_t number) {
@@ -79,7 +80,7 @@ void input_trigger(uint8_t number) {
     setOutputStateMask(currentMask);
     outputStateNeedsToBeSaved = true;
 
-    controlInterruptLine(true); //trigger interrupt line
+    iface_controlInterruptLine(true); //trigger interrupt line
 }
 
 //i2c commands
@@ -140,7 +141,20 @@ void i2c_executeReadCommand(char command, uint8_t argument, volatile uint8_t *ou
     }
 
     //master asked about our state, release the interrupt line
-    controlInterruptLine(false);    
+    iface_controlInterruptLine(false);    
+}
+
+void iface_receivedAddressNumber(uint8_t address) {
+    uint8_t classPart = (DEVICE_CLASS&0xF) << 3;
+    uint8_t addressPart = address & 0x7;
+
+    if ( address == 2 ) {
+        PORTD |= DEBUG1;
+        _delay_ms(5);
+        PORTD &= ~DEBUG1;
+    }
+
+    init_i2c(classPart | addressPart);
 }
 
 void delayed_power_sequence() {
@@ -231,9 +245,6 @@ int main() {
         //reload stored values from eeprom
         eeprom_restore_stored_values();
 
-        //init external i2c interface
-        init_i2c(0x2f);
-
         //declare i2c read commands
         char readCommands[] = {Command_GetPortValue, Command_GetAllPortBits};
         i2c_setReadCommands(readCommands , 2);
@@ -250,7 +261,7 @@ int main() {
         process_interface();
 
         //wait before going to sleep
-        _delay_ms(15);
+        _delay_ms(5);
 
         if ( i2c_commandsAvailable() || output_hasNewState() ) {
             continue; //skip sleep mode, repeat all processes
@@ -274,9 +285,6 @@ int main() {
 
         //turn off blue led
         PORTC &= ~(REMOTE_COMMAND_LED);
-
-        //release interrupt line
-        //controlInterruptLine(false);
 
 #if DEBUG_MODE
         PORTD &= ~(DEBUG1|DEBUG2);

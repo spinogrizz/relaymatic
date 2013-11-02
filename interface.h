@@ -13,7 +13,7 @@ ISR(TIMER0_OVF_vect);
 
 void init_interface_ports();
 
-void testModeSequence();
 void process_interface();
 
-void controlInterruptLine(bool flag);
+void iface_controlInterruptLine(bool flag);
+void iface_receivedAddressNumber(uint8_t address) __attribute__((weak)); //override

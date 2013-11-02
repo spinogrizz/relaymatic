@@ -104,11 +104,16 @@ ISR(TWI_vect){
 
     case TW_SR_DATA_ACK:  // data has been received in slave receiver mode
         if ( bus_state == BusWillReceiveCommand ) {
-            currentCommand.command = TWDR;
-            currentCommand.data = 0x00;
-            bus_state = BusReceivedCommand;                
-
-            ACK();      
+            if ( TWDR != 0x00 ) { 
+                currentCommand.command = TWDR;
+                currentCommand.data = 0x00;
+                bus_state = BusReceivedCommand;                
+                ACK();     
+            } else {
+                //invalid command 
+                bus_state = BusIdle;
+                NACK();
+            } 
         } else if ( bus_state == BusReceivedCommand) {
             currentCommand.data = TWDR;
             i2c_commandEnqueue(&currentCommand);
@@ -163,6 +168,9 @@ ISR(TWI_vect){
 }
 
 void init_i2c(uint8_t address){
+    //turn i2c off, if it was on
+    TWCR &= ~((1<<TWIE) | (1<<TWEN));
+
     // load slave address into 7 MSB, and enable general call recognition
     TWAR = (address<<1) | (1<<TWGCE);
     TWDR = 0xFF; //default data
@@ -186,7 +194,7 @@ void i2c_setReadCommands(char commands[], uint8_t numCommands) {
 }
 
 void process_i2c() {    
-    if ( i2c_commandsAvailable() ) {
+    while ( i2c_commandsAvailable() ) {
         RemoteCommand cmd;
         i2c_commandDequeue(&cmd);
 
