@@ -124,6 +124,9 @@ ISR(TIMER0_OVF_vect) {
 
 void process_interface() {
     if ( testButtonPressed ) {
+
+        _delay_ms(250);
+
         testModeSequence();
 
         iface_controlInterruptLine(true); //trigger interrupt line

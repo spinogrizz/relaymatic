@@ -4,6 +4,7 @@
 #include <avr/interrupt.h>
 #include <stdlib.h> 
 #include <stdbool.h> 
+#include <avr/wdt.h>
 
 #include "i2c.h"
 
@@ -205,5 +206,7 @@ void process_i2c() {
         } else if ( i2c_executeWriteCommand != 0 ) {
             i2c_executeWriteCommand(cmd.command, cmd.data);
         }
+
+        wdt_reset();
     }
 }

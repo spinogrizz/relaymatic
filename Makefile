@@ -15,12 +15,16 @@ build:
 
 	avr-gcc -Wall -Os -std=c99 -DF_CPU=$(CLOCK) -mmcu=$(PROGDEVICE) -o bin/$(PROGNAME).elf bin/*.o
 	avr-objcopy -j .text -j .data -O ihex bin/$(PROGNAME).elf bin/$(PROGNAME).hex
+	avr-objcopy -j .eeprom -O ihex bin/$(PROGNAME).elf bin/$(PROGNAME).eep
 
 flash:
 	avrdude -c $(PROGRAMMER) -F -p $(FLASHDEVICE) -U flash:w:bin/$(PROGNAME).hex:i 
 
 fuses:	
 	avrdude -c $(PROGRAMMER) -F -p $(FLASHDEVICE) -U lfuse:w:0xe2:m -U hfuse:w:0xdc:m #-U efuse:w:0xf9:m
+
+eeprom:
+	avrdude -c $(PROGRAMMER) -F -p $(FLASHDEVICE) -U eeprom:w:bin/$(PROGNAME).eep	
 
 # 	8MHz, no divider
 # 	-U lfuse:w:0xe2:m -U hfuse:w:0xdf:m -U efuse:w:0xff:m      

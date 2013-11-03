@@ -32,6 +32,8 @@
 uint8_t storedOutputValues[8] EEMEM = { 0x00 };
 volatile bool outputStateNeedsToBeSaved = false;
 
+uint8_t i2c_address_num EEMEM = (DEVICE_CLASS<<3);
+
 enum RemoteCommands {
     //set commands
     Command_SetPortValue = 's',  //lsb 4 bits — port number, msb 4 bits — 0x1111 = on, 0x0000 = off
@@ -151,8 +153,13 @@ void iface_receivedAddressNumber(uint8_t address) {
     //next 4 bits — device class
     uint8_t classPart = (DEVICE_CLASS&0xF) << 3;
     uint8_t addressPart = address & 0x7;
+    uint8_t newAddress = (classPart | addressPart);
 
-    init_i2c(classPart | addressPart); //restart i2c with a new address
+    //restart i2c with a new address
+    init_i2c(newAddress);
+
+    //store that address in eeprom
+    eeprom_write_byte((uint8_t *)&i2c_address_num, newAddress);
 }
 
 //slowly turn power to switches and relays
@@ -173,7 +180,7 @@ void delayed_power_sequence() {
 }
 
 //the values in EEPROM are spread in 8 bytes, probably for a better data retention
-void eeprom_restore_stored_values() {
+void eeprom_restore_state_mask() {
     uint8_t outputValues[8] = { 0 };
     uint8_t newMask = 0x00;
     eeprom_read_block((uint8_t *)outputValues, (const uint8_t *)storedOutputValues, 8);
@@ -185,7 +192,7 @@ void eeprom_restore_stored_values() {
     setOutputStateMaskSlowly(newMask);
 }
 
-void eeprom_store_new_values() {
+void eeprom_save_state_mask() {
     uint8_t outputValues[8] = { 0 };
     uint8_t currentMask = currentOutputStateMask();
 
@@ -231,7 +238,7 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 int main() {
-    MCUSR &= ~(1<<WDRF); //clear watchdog reset flag
+    MCUSR &= ~_BV(WDRF); //clear watchdog reset flag     
     wdt_disable(); //disable watchdog
 
     cli(); {
@@ -245,11 +252,16 @@ int main() {
         delayed_power_sequence();
 
         //reload stored values from eeprom
-        eeprom_restore_stored_values();
+        eeprom_restore_state_mask();
 
         //declare i2c read commands
         char readCommands[] = {Command_GetPortValue, Command_GetAllPortBits};
         i2c_setReadCommands(readCommands , 2);
+
+        //restore i2c address from eeprom
+        uint8_t i2c_address = eeprom_read_byte((uint8_t *)&i2c_address_num);
+        i2c_address &= 0x7F; //mask out one msb
+        init_i2c(i2c_address);
     }; sei();
 
     //main loop
@@ -271,7 +283,7 @@ int main() {
 
         //do we have a new values state?
         if ( needsEepromSave ) {
-            eeprom_store_new_values();
+            eeprom_save_state_mask();
             needsEepromSave = false;
         }
 
@@ -301,7 +313,7 @@ int main() {
         sleep_enable();
         sleep_cpu();
 
-        wdt_enable(WDTO_2S); //restore watchdog timer
+        wdt_enable(WDTO_1S); //restore watchdog timer
     }
 
     return 0;  

@@ -4,21 +4,30 @@ void setup() {
   Wire.begin();
   Serial.begin(9600);
   pinMode(13, OUTPUT);
+  
+  pinMode(2, OUTPUT);  
+  
+  strobeAddress(5);
 }
 
-#define I2C_ADDRESS    0x2F //7-bit style
+#define I2C_ADDRESS    0x75 //7-bit style
 
 void blink() {
-   delay(3);
-   digitalWrite(13, HIGH);
-   delay(3);
-   digitalWrite(13, LOW);  
+   digitalWrite(13, HIGH);  delay(3);
+   digitalWrite(13, LOW);   delay(3);   
 }
 
 typedef struct {
    uint8_t cmd;
    uint8_t data;
 } Command;
+
+void strobeAddress(uint8_t address) {
+   for ( int i=0; i<address*2; i++ ) {
+     digitalWrite(2, HIGH);  delay(1);
+     digitalWrite(2, LOW);   delay(1);
+   }   
+}
 
 void loop() {
   
@@ -51,7 +60,7 @@ void loop() {
       
        Wire.beginTransmission(I2C_ADDRESS);  {
           Wire.write((uint8_t *)&cmd, 2); 
-       }; Wire.endTransmission();  
+       }; byte c = Wire.endTransmission();  
        
        if ( cmd.cmd == 'G' || cmd.cmd == 'g' ) {
          delay(5); //wait before new start condition
@@ -64,7 +73,7 @@ void loop() {
          Serial.println(c, BIN);  
        }
        else {
-         delay(500);         
+         delay(4000);         
        }
 
    }
