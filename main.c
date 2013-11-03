@@ -287,6 +287,7 @@ int main() {
             needsEepromSave = false;
         }
 
+        //reset everything each hour, allowing touch switches to recalibrate
         if ( needsLongTimeReset ) {
             cli(); {
                 PORTB &= ~POWER_SWITCHES;
