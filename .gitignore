@@ -1,1 +1,5 @@
 bin/*
+pcb/*.b#?
+pcb/*.s#?
+.DS_Store
+
